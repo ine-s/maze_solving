@@ -152,18 +152,45 @@ class Maze:
     
     def display(self, path=None):
         """
-        Affiche le labyrinthe. Si un chemin est donné, le marque avec '*'.
+        Affiche le labyrinthe avec des couleurs.
+        - Chemin: vert
+        - Départ (A): bleu
+        - Arrivée (B): rouge
+        - Murs (#): gris
+        - Cases libres (.): blanc
         """
-        # Copie du grid pour ne pas le modifier
-        display_grid = [row[:] for row in self.grid]
+        # Codes couleur ANSI
+        RESET = '\033[0m'
+        GREEN = '\033[92m'   # Chemin
+        BLUE = '\033[94m'    # Départ
+        RED = '\033[91m'     # Arrivée
+        GRAY = '\033[90m'    # Murs
+        YELLOW = '\033[93m'  # Symbole du chemin
         
-        if path:
-            for (i, j) in path:
-                if display_grid[i][j] not in ('A', 'B'):
-                    display_grid[i][j] = '*'
+        # Convertir le chemin en set pour recherche rapide
+        path_set = set(path) if path else set()
         
-        for row in display_grid:
-            print(''.join(row))
+        for i in range(self.height):
+            line = ""
+            for j in range(self.width):
+                cell = self.grid[i][j]
+                
+                if (i, j) in path_set:
+                    if cell == 'A':
+                        line += BLUE + 'A' + RESET
+                    elif cell == 'B':
+                        line += RED + 'B' + RESET
+                    else:
+                        line += GREEN + '●' + RESET  # Symbole du chemin
+                elif cell == '#':
+                    line += GRAY + '█' + RESET
+                elif cell == 'A':
+                    line += BLUE + 'A' + RESET
+                elif cell == 'B':
+                    line += RED + 'B' + RESET
+                else:
+                    line += ' '  # Case libre = espace
+            print(line)
 
 
 # Code de test
