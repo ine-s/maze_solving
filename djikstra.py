@@ -1,4 +1,5 @@
 import heapq
+import random
 
 
 class Maze:
@@ -20,10 +21,12 @@ class Maze:
         with open(filename, 'r') as f:
             for line in f:
                 # On enlève le '\n' à la fin et on convertit en liste de caractères
-                self.grid.append(list(line.strip()))
+                stripped = line.strip()
+                if stripped:  # Ignorer les lignes vides
+                    self.grid.append(list(stripped))
         
         self.height = len(self.grid)      # Nombre de lignes
-        self.width = len(self.grid[0])    # Nombre de colonnes
+        self.width = len(self.grid[0]) if self.grid else 0    # Nombre de colonnes
         
         # Matrice de récompense (coût pour traverser chaque case)
         # Par défaut: 1 pour case libre, infini pour mur
@@ -31,7 +34,7 @@ class Maze:
         
         # Parcourir la grille pour trouver A, B et initialiser les récompenses
         for i in range(self.height):
-            for j in range(self.width):
+            for j in range(len(self.grid[i])):  # Utiliser la longueur réelle de chaque ligne
                 cell = self.grid[i][j]
                 if cell == 'A':
                     self.start = (i, j)
@@ -82,73 +85,183 @@ class Maze:
         
         return neighbors
     
-    def solve(self, si, sj, gi, gj):
+    # ==================== PARTIE B : Fonctions de génération ====================
+    
+    @classmethod
+    def create_empty(cls, height, width, start=(1, 1), goal=None):
         """
-        Trouve le plus court chemin de (si, sj) à (gi, gj) avec Dijkstra.
+        Crée un labyrinthe vide (sans charger de fichier).
         
         Paramètres:
-        - si, sj: position de départ (ligne, colonne)
-        - gi, gj: position d'arrivée (ligne, colonne)
+        - height: nombre de lignes
+        - width: nombre de colonnes
+        - start: tuple (i, j) pour le départ
+        - goal: tuple (i, j) pour l'arrivée (par défaut: coin opposé)
         
-        Retourne:
-        - Le chemin sous forme de liste de positions [(i1,j1), (i2,j2), ...]
-        - None si aucun chemin n'existe
+        Retourne: une instance de Maze
         """
-        # Distance minimale pour atteindre chaque case
-        dist = {}
-        dist[(si, sj)] = 0
+        maze = cls.__new__(cls)
+        maze.height = height
+        maze.width = width
+        maze.start = start
+        maze.goal = goal if goal else (height - 2, width - 2)
         
-        # Pour reconstruire le chemin: parent[case] = case précédente
-        parent = {}
-        parent[(si, sj)] = None
+        # Créer une grille vide avec murs sur les bords
+        maze.grid = []
+        for i in range(height):
+            row = []
+            for j in range(width):
+                if i == 0 or i == height - 1 or j == 0 or j == width - 1:
+                    row.append('#')  # Mur sur les bords
+                else:
+                    row.append('.')  # Case libre
+            maze.grid.append(row)
         
-        # File de priorité: (distance, (i, j))
-        heap = [(0, (si, sj))]
+        # Placer départ et arrivée
+        maze.grid[maze.start[0]][maze.start[1]] = 'A'
+        maze.grid[maze.goal[0]][maze.goal[1]] = 'B'
         
-        # Cases déjà visitées
-        visited = set()
+        # Initialiser la matrice de récompense
+        maze.rewards = [[0 for _ in range(width)] for _ in range(height)]
+        maze.init_rewards()
         
-        while heap:
-            # Prendre la case avec la plus petite distance
-            current_dist, (i, j) = heapq.heappop(heap)
-            
-            # Si déjà visitée, on passe
-            if (i, j) in visited:
-                continue
-            
-            # Marquer comme visitée
-            visited.add((i, j))
-            
-            # Si on est arrivé au but, reconstruire le chemin
-            if (i, j) == (gi, gj):
-                return self._reconstruct_path(parent, (gi, gj))
-            
-            # Explorer les voisins
-            for (ni, nj) in self.get_neighbors(i, j):
-                if (ni, nj) not in visited:
-                    # Coût = 1 pour chaque déplacement
-                    new_dist = current_dist + 1
-                    
-                    # Si on trouve un meilleur chemin
-                    if (ni, nj) not in dist or new_dist < dist[(ni, nj)]:
-                        dist[(ni, nj)] = new_dist
-                        parent[(ni, nj)] = (i, j)
-                        heapq.heappush(heap, (new_dist, (ni, nj)))
-        
-        # Aucun chemin trouvé
-        return None
+        return maze
     
-    def _reconstruct_path(self, parent, goal):
+    def generate_obstacles_random(self, density=0.2, seed=None):
         """
-        Reconstruit le chemin en remontant les parents.
+        Génère des obstacles de manière aléatoire.
+        
+        Paramètres:
+        - density: proportion de cases qui deviennent des murs (0.0 à 1.0)
+        - seed: graine pour reproductibilité (optionnel)
+        
+        Les cellules de départ et d'arrivée restent toujours franchissables.
         """
-        path = []
-        current = goal
-        while current is not None:
-            path.append(current)
-            current = parent[current]
-        path.reverse()  # On inverse pour avoir départ -> arrivée
-        return path
+        if seed is not None:
+            random.seed(seed)
+        
+        for i in range(1, self.height - 1):
+            for j in range(1, self.width - 1):
+                # Ne pas toucher au départ et à l'arrivée
+                if (i, j) == self.start or (i, j) == self.goal:
+                    continue
+                
+                # Placer un mur avec probabilité = density
+                if random.random() < density:
+                    self.grid[i][j] = '#'
+                else:
+                    self.grid[i][j] = '.'
+        
+        # Mettre à jour les récompenses
+        self.init_rewards()
+    
+    def generate_obstacles_deterministic(self, pattern='grid', spacing=4):
+        """
+        Génère des obstacles de manière déterministe selon un motif.
+        
+        Paramètres:
+        - pattern: 'grid' (grille), 'horizontal' (lignes), 'vertical' (colonnes)
+        - spacing: espacement entre les obstacles
+        
+        Les cellules de départ et d'arrivée restent toujours franchissables.
+        """
+        # D'abord, nettoyer la grille (garder seulement les bords)
+        for i in range(1, self.height - 1):
+            for j in range(1, self.width - 1):
+                self.grid[i][j] = '.'
+        
+        for i in range(1, self.height - 1):
+            for j in range(1, self.width - 1):
+                # Ne pas toucher au départ et à l'arrivée
+                if (i, j) == self.start or (i, j) == self.goal:
+                    continue
+                
+                place_wall = False
+                
+                if pattern == 'grid':
+                    # Grille: murs aux intersections régulières
+                    if i % spacing == 0 and j % spacing == 0:
+                        place_wall = True
+                elif pattern == 'horizontal':
+                    # Lignes horizontales avec passages
+                    if i % spacing == 0 and j % (spacing * 2) != 0:
+                        place_wall = True
+                elif pattern == 'vertical':
+                    # Colonnes verticales avec passages
+                    if j % spacing == 0 and i % (spacing * 2) != 0:
+                        place_wall = True
+                
+                if place_wall:
+                    self.grid[i][j] = '#'
+        
+        # Replacer départ et arrivée
+        self.grid[self.start[0]][self.start[1]] = 'A'
+        self.grid[self.goal[0]][self.goal[1]] = 'B'
+        
+        # Mettre à jour les récompenses
+        self.init_rewards()
+    
+    def init_rewards(self, move_penalty=-1, goal_reward=100, bonus_cells=None):
+        """
+        Initialise la matrice de récompense.
+        
+        Paramètres:
+        - move_penalty: pénalité pour chaque déplacement (valeur négative)
+        - goal_reward: récompense pour atteindre l'arrivée
+        - bonus_cells: dict {(i,j): bonus} pour des cellules avec bonus
+        
+        La pénalité encourage les chemins courts.
+        """
+        if bonus_cells is None:
+            bonus_cells = {}
+        
+        for i in range(self.height):
+            for j in range(len(self.grid[i])):
+                cell = self.grid[i][j]
+                
+                if cell == '#':
+                    # Mur = coût infini (inaccessible)
+                    self.rewards[i][j] = float('-inf')
+                elif (i, j) == self.goal:
+                    # Arrivée = grande récompense
+                    self.rewards[i][j] = goal_reward
+                elif (i, j) in bonus_cells:
+                    # Cellule avec bonus
+                    self.rewards[i][j] = bonus_cells[(i, j)]
+                else:
+                    # Case normale = pénalité de déplacement
+                    self.rewards[i][j] = move_penalty
+    
+    def add_bonus(self, i, j, bonus_value):
+        """
+        Ajoute un bonus sur une cellule spécifique.
+        
+        Paramètres:
+        - i, j: coordonnées de la cellule
+        - bonus_value: valeur du bonus (positif)
+        """
+        if self.in_bounds(i, j) and self.grid[i][j] not in ('#', 'A', 'B'):
+            self.rewards[i][j] = bonus_value
+    
+    def save_to_file(self, filename):
+        """
+        Sauvegarde le labyrinthe dans un fichier texte.
+        """
+        with open(filename, 'w') as f:
+            for row in self.grid:
+                f.write(''.join(row) + '\n')
+    
+    # ==================== FIN PARTIE B ====================
+    
+    # ==================== PARTIE C : Algorithme Dijkstra (à implémenter plus tard) ====================
+    # def solve(self, si, sj, gi, gj):
+    #     """À implémenter dans la Partie C"""
+    #     pass
+    
+    # def _reconstruct_path(self, parent, goal):
+    #     """À implémenter dans la Partie C"""
+    #     pass
+    # ==================== FIN PARTIE C ====================
     
     def display(self, path=None):
         """
@@ -172,7 +285,7 @@ class Maze:
         
         for i in range(self.height):
             line = ""
-            for j in range(self.width):
+            for j in range(len(self.grid[i])):  # Utiliser la longueur réelle de chaque ligne
                 cell = self.grid[i][j]
                 
                 if (i, j) in path_set:
@@ -195,6 +308,10 @@ class Maze:
 
 # Code de test
 if __name__ == "__main__":
+    print("=" * 50)
+    print("TEST PARTIE A : Chargement depuis fichier")
+    print("=" * 50)
+    
     # Charger le labyrinthe
     maze = Maze("labyrinthe.txt")
     
@@ -204,11 +321,29 @@ if __name__ == "__main__":
     print(f"\nDépart: {maze.start}, Arrivée: {maze.goal}")
     print(f"Dimensions: {maze.height} x {maze.width}")
     
-    # Résoudre le labyrinthe
-    path = maze.solve(maze.start[0], maze.start[1], maze.goal[0], maze.goal[1])
+    # L'algorithme de résolution sera implémenté dans la Partie C
     
-    if path:
-        print(f"\nChemin trouvé ({len(path)} cases):")
-        maze.display(path)
-    else:
-        print("\nAucun chemin trouvé!")
+    print("\n" + "=" * 50)
+    print("TEST PARTIE B : Génération de labyrinthe")
+    print("=" * 50)
+    
+    # Créer un labyrinthe vide 25x25
+    maze2 = Maze.create_empty(25, 25, start=(1, 1), goal=(23, 23))
+    
+    print("\n--- Labyrinthe avec obstacles ALÉATOIRES (densité 15%) ---")
+    maze2.generate_obstacles_random(density=0.15, seed=42)
+    maze2.display()
+    
+    # Test génération déterministe
+    print("\n--- Labyrinthe avec obstacles DÉTERMINISTES (grille) ---")
+    maze3 = Maze.create_empty(25, 25, start=(1, 1), goal=(23, 23))
+    maze3.generate_obstacles_deterministic(pattern='grid', spacing=5)
+    maze3.display()
+    
+    # Afficher la matrice de récompense
+    print("\n--- Matrice de récompense (extrait 5x5) ---")
+    print("Légende: -1 = pénalité déplacement, 100 = arrivée, -inf = mur")
+    for i in range(5):
+        row = [f"{maze3.rewards[i][j]:>5}" if maze3.rewards[i][j] != float('-inf') else " -inf" 
+               for j in range(5)]
+        print(" ".join(row))
