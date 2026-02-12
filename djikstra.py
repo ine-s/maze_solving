@@ -1,5 +1,17 @@
 import heapq
 import random
+import math
+
+# Pour la visualisation graphique (Question 2)
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+    from matplotlib.colors import ListedColormap
+    import numpy as np
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    print("Note: matplotlib non disponible. Installer avec 'pip install matplotlib numpy' pour la visualisation graphique.")
 
 
 class Maze:
@@ -69,19 +81,40 @@ class Maze:
         # Vérifier que ce n'est pas un mur
         return self.grid[i][j] != '#'
     
-    def get_neighbors(self, i, j):
+    def get_neighbors(self, i, j, allow_diagonal=False):
         """
-        Retourne la liste des voisins valides de la case (i, j).
-        On peut se déplacer en haut, bas, gauche, droite.
+        Retourne la liste des voisins valides de la case (i, j) avec leur coût.
+        
+        Paramètres:
+        - i, j: position actuelle
+        - allow_diagonal: si True, autorise les déplacements diagonaux
+        
+        Retourne: liste de tuples ((ni, nj), cout)
         """
         neighbors = []
-        # Les 4 directions possibles: (delta_i, delta_j)
-        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # haut, bas, gauche, droite
         
-        for di, dj in directions:
-            ni, nj = i + di, j + dj  # nouvelle position
+        # Les 4 directions cardinales: (delta_i, delta_j, coût)
+        directions = [
+            (-1, 0, 1.0),   # haut
+            (1, 0, 1.0),    # bas
+            (0, -1, 1.0),   # gauche
+            (0, 1, 1.0)     # droite
+        ]
+        
+        # Ajouter les 4 directions diagonales si autorisé
+        if allow_diagonal:
+            diag_cost = math.sqrt(2)  # ≈ 1.414
+            directions.extend([
+                (-1, -1, diag_cost),  # haut-gauche
+                (-1, 1, diag_cost),   # haut-droite
+                (1, -1, diag_cost),   # bas-gauche
+                (1, 1, diag_cost)     # bas-droite
+            ])
+        
+        for di, dj, cost in directions:
+            ni, nj = i + di, j + dj
             if self.is_valid(ni, nj):
-                neighbors.append((ni, nj))
+                neighbors.append(((ni, nj), cost))
         
         return neighbors
     
@@ -255,20 +288,33 @@ class Maze:
     
     # ==================== PARTIE C : Algorithme A* ====================
     
-    def _heuristic(self, i, j, gi, gj):
+    def _heuristic(self, i, j, gi, gj, allow_diagonal=False):
         """
-        Calcule l'heuristique (distance de Manhattan) entre (i,j) et (gi,gj).
+        Calcule l'heuristique entre (i,j) et (gi,gj).
+        
+        - Sans diagonale: Distance de Manhattan
+        - Avec diagonale: Distance de Chebyshev (ou diagonale)
+        
         Cette heuristique est admissible car elle ne surestime jamais le coût réel.
         """
-        return abs(i - gi) + abs(j - gj)
+        dx = abs(i - gi)
+        dy = abs(j - gj)
+        
+        if allow_diagonal:
+            # Heuristique diagonale: min(dx,dy) * sqrt(2) + |dx-dy| * 1
+            return math.sqrt(2) * min(dx, dy) + abs(dx - dy)
+        else:
+            # Distance de Manhattan
+            return dx + dy
     
-    def solve(self, si, sj, gi, gj):
+    def solve(self, si, sj, gi, gj, allow_diagonal=False):
         """
         Trouve le chemin optimal de (si, sj) à (gi, gj) avec l'algorithme A*.
         
         Paramètres:
         - si, sj: position de départ (ligne, colonne)
         - gi, gj: position d'arrivée (ligne, colonne)
+        - allow_diagonal: si True, autorise les déplacements diagonaux (coût sqrt(2))
         
         Retourne:
         - La liste ordonnée des cellules du chemin optimal [(i1,j1), (i2,j2), ...]
@@ -286,7 +332,7 @@ class Maze:
         
         # f_score[cellule] = g_score + heuristique (estimation du coût total)
         f_score = {}
-        f_score[(si, sj)] = self._heuristic(si, sj, gi, gj)
+        f_score[(si, sj)] = self._heuristic(si, sj, gi, gj, allow_diagonal)
         
         # Pour reconstruire le chemin: parent[cellule] = cellule précédente
         parent = {}
@@ -316,18 +362,18 @@ class Maze:
                 return self._reconstruct_path(parent, (gi, gj))
             
             # Explorer les voisins accessibles
-            for (ni, nj) in self.get_neighbors(i, j):
+            for (ni, nj), move_cost in self.get_neighbors(i, j, allow_diagonal):
                 if (ni, nj) in visited:
                     continue
                 
-                # Coût pour atteindre le voisin = coût actuel + 1
-                tentative_g = g_score[(i, j)] + 1
+                # Coût pour atteindre le voisin = coût actuel + coût du déplacement
+                tentative_g = g_score[(i, j)] + move_cost
                 
                 # Si on trouve un meilleur chemin vers ce voisin
                 if (ni, nj) not in g_score or tentative_g < g_score[(ni, nj)]:
                     # Mettre à jour le meilleur coût
                     g_score[(ni, nj)] = tentative_g
-                    f_score[(ni, nj)] = tentative_g + self._heuristic(ni, nj, gi, gj)
+                    f_score[(ni, nj)] = tentative_g + self._heuristic(ni, nj, gi, gj, allow_diagonal)
                     parent[(ni, nj)] = (i, j)
                     
                     # Ajouter à la file de priorité
@@ -398,6 +444,160 @@ class Maze:
                 else:
                     line += ' '  # Case libre = espace
             print(line)
+    
+    # ==================== QUESTION 2 : Visualisation graphique ====================
+    
+    def display_graphical(self, path=None, title="Labyrinthe", show_grid=True, save_file=None):
+        """
+        Affiche le labyrinthe avec une visualisation graphique (matplotlib).
+        
+        Paramètres:
+        - path: liste des cellules du chemin (optionnel)
+        - title: titre de la figure
+        - show_grid: afficher la grille
+        - save_file: chemin pour sauvegarder l'image (optionnel)
+        """
+        if not MATPLOTLIB_AVAILABLE:
+            print("Erreur: matplotlib n'est pas installé.")
+            print("Installer avec: pip install matplotlib numpy")
+            return
+        
+        # Créer une matrice numérique pour la visualisation
+        # 0 = case libre, 1 = mur, 2 = chemin, 3 = départ, 4 = arrivée
+        matrix = np.zeros((self.height, self.width))
+        
+        for i in range(self.height):
+            for j in range(len(self.grid[i])):
+                cell = self.grid[i][j]
+                if cell == '#':
+                    matrix[i][j] = 1  # Mur
+                elif cell == 'A':
+                    matrix[i][j] = 3  # Départ
+                elif cell == 'B':
+                    matrix[i][j] = 4  # Arrivée
+        
+        # Marquer le chemin
+        if path:
+            for (i, j) in path:
+                if matrix[i][j] == 0:  # Ne pas écraser départ/arrivée
+                    matrix[i][j] = 2  # Chemin
+        
+        # Définir les couleurs
+        # 0=blanc (libre), 1=noir (mur), 2=vert (chemin), 3=bleu (départ), 4=rouge (arrivée)
+        colors = ['white', 'black', 'limegreen', 'dodgerblue', 'red']
+        cmap = ListedColormap(colors)
+        
+        # Créer la figure
+        fig, ax = plt.subplots(figsize=(10, 10))
+        ax.imshow(matrix, cmap=cmap, vmin=0, vmax=4)
+        
+        # Ajouter la grille
+        if show_grid:
+            ax.set_xticks(np.arange(-0.5, self.width, 1), minor=True)
+            ax.set_yticks(np.arange(-0.5, self.height, 1), minor=True)
+            ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5)
+        
+        # Marquer départ et arrivée avec des labels
+        if self.start:
+            ax.text(self.start[1], self.start[0], 'A', ha='center', va='center', 
+                   fontsize=14, fontweight='bold', color='white')
+        if self.goal:
+            ax.text(self.goal[1], self.goal[0], 'B', ha='center', va='center', 
+                   fontsize=14, fontweight='bold', color='white')
+        
+        # Dessiner le chemin avec des lignes si fourni
+        if path and len(path) > 1:
+            path_y = [p[0] for p in path]
+            path_x = [p[1] for p in path]
+            ax.plot(path_x, path_y, 'g-', linewidth=2, alpha=0.7)
+        
+        ax.set_title(title, fontsize=14, fontweight='bold')
+        ax.set_xlabel('Colonne (j)')
+        ax.set_ylabel('Ligne (i)')
+        
+        # Afficher la longueur du chemin si disponible
+        if path:
+            ax.text(0.02, 0.98, f'Longueur: {len(path)} cellules', 
+                   transform=ax.transAxes, fontsize=10,
+                   verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat'))
+        
+        plt.tight_layout()
+        
+        if save_file:
+            plt.savefig(save_file, dpi=150, bbox_inches='tight')
+            print(f"Image sauvegardée: {save_file}")
+        
+        plt.show()
+    
+    def compare_paths(self, title="Comparaison: 4 directions vs 8 directions (diagonales)"):
+        """
+        Compare visuellement les chemins avec et sans déplacements diagonaux.
+        """
+        if not MATPLOTLIB_AVAILABLE:
+            print("Erreur: matplotlib n'est pas installé.")
+            return
+        
+        # Résoudre avec 4 directions
+        path_4dir = self.solve(self.start[0], self.start[1], 
+                               self.goal[0], self.goal[1], allow_diagonal=False)
+        
+        # Résoudre avec 8 directions (diagonales)
+        path_8dir = self.solve(self.start[0], self.start[1], 
+                               self.goal[0], self.goal[1], allow_diagonal=True)
+        
+        # Créer une figure avec 2 sous-graphes
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+        
+        # Préparer les matrices
+        for ax, path, subtitle, directions in [
+            (ax1, path_4dir, "4 directions (Manhattan)", "4 dir"),
+            (ax2, path_8dir, "8 directions (Diagonales)", "8 dir")
+        ]:
+            matrix = np.zeros((self.height, self.width))
+            
+            for i in range(self.height):
+                for j in range(len(self.grid[i])):
+                    cell = self.grid[i][j]
+                    if cell == '#':
+                        matrix[i][j] = 1
+                    elif cell == 'A':
+                        matrix[i][j] = 3
+                    elif cell == 'B':
+                        matrix[i][j] = 4
+            
+            if path:
+                for (i, j) in path:
+                    if matrix[i][j] == 0:
+                        matrix[i][j] = 2
+            
+            colors = ['white', 'black', 'limegreen', 'dodgerblue', 'red']
+            cmap = ListedColormap(colors)
+            
+            ax.imshow(matrix, cmap=cmap, vmin=0, vmax=4)
+            ax.set_xticks(np.arange(-0.5, self.width, 1), minor=True)
+            ax.set_yticks(np.arange(-0.5, self.height, 1), minor=True)
+            ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5)
+            
+            if self.start:
+                ax.text(self.start[1], self.start[0], 'A', ha='center', va='center', 
+                       fontsize=12, fontweight='bold', color='white')
+            if self.goal:
+                ax.text(self.goal[1], self.goal[0], 'B', ha='center', va='center', 
+                       fontsize=12, fontweight='bold', color='white')
+            
+            if path and len(path) > 1:
+                path_y = [p[0] for p in path]
+                path_x = [p[1] for p in path]
+                ax.plot(path_x, path_y, 'g-', linewidth=2, alpha=0.7)
+            
+            length_info = f"Cellules: {len(path)}" if path else "Pas de chemin"
+            ax.set_title(f"{subtitle}\n{length_info}", fontsize=12, fontweight='bold')
+        
+        fig.suptitle(title, fontsize=14, fontweight='bold')
+        plt.tight_layout()
+        plt.show()
+    
+    # ==================== FIN QUESTION 2 ====================
 
 
 # Code de test
@@ -564,3 +764,67 @@ if __name__ == "__main__":
     print(f"Test 2 (obstacles simples) : {'✓ PASS' if path_simple else '✗ FAIL'}")
     print(f"Test 3 (sans chemin)       : {'✓ PASS' if not path_blocked else '✗ FAIL'}")
     print(f"Contraintes départ/arrivée : ✓ Toujours respectées")
+    
+    # ==================== QUESTION 2 : Déplacements diagonaux et visualisation ====================
+    print("\n" + "=" * 60)
+    print("PARTIE 7 - Question 2 : Diagonales et visualisation graphique")
+    print("=" * 60)
+    
+    # ----- Test des déplacements diagonaux -----
+    print("\n" + "-" * 50)
+    print("TEST: Comparaison 4 directions vs 8 directions (diagonales)")
+    print("-" * 50)
+    
+    maze_diag = Maze.create_empty(20, 20, start=(1, 1), goal=(18, 18))
+    maze_diag.generate_obstacles_random(density=0.1, seed=123)
+    
+    # Résolution avec 4 directions (standard)
+    path_4dir = maze_diag.solve(maze_diag.start[0], maze_diag.start[1],
+                                 maze_diag.goal[0], maze_diag.goal[1], 
+                                 allow_diagonal=False)
+    
+    # Résolution avec 8 directions (diagonales)
+    path_8dir = maze_diag.solve(maze_diag.start[0], maze_diag.start[1],
+                                 maze_diag.goal[0], maze_diag.goal[1], 
+                                 allow_diagonal=True)
+    
+    print("\n--- Sans diagonales (4 directions) ---")
+    if path_4dir:
+        print(f"Chemin trouvé: {len(path_4dir)} cellules")
+        maze_diag.display(path_4dir)
+    else:
+        print("Aucun chemin trouvé!")
+    
+    print("\n--- Avec diagonales (8 directions, coût √2 ≈ 1.414) ---")
+    if path_8dir:
+        print(f"Chemin trouvé: {len(path_8dir)} cellules")
+        maze_diag.display(path_8dir)
+    else:
+        print("Aucun chemin trouvé!")
+    
+    # Comparaison
+    print("\n--- Comparaison des résultats ---")
+    if path_4dir and path_8dir:
+        print(f"4 directions: {len(path_4dir)} cellules")
+        print(f"8 directions: {len(path_8dir)} cellules")
+        print(f"Gain: {len(path_4dir) - len(path_8dir)} cellules en moins avec les diagonales")
+    
+    # ----- Visualisation graphique -----
+    print("\n" + "-" * 50)
+    print("TEST: Visualisation graphique (matplotlib)")
+    print("-" * 50)
+    
+    if MATPLOTLIB_AVAILABLE:
+        print("Affichage de la visualisation graphique...")
+        
+        # Visualisation simple
+        maze_diag.display_graphical(path_8dir, 
+                                     title="Labyrinthe résolu avec diagonales (A*)")
+        
+        # Comparaison côte à côte
+        maze_diag.compare_paths()
+        
+        print("✓ Visualisation graphique terminée!")
+    else:
+        print("⚠ matplotlib non disponible. Pour activer la visualisation graphique:")
+        print("  pip install matplotlib numpy")
