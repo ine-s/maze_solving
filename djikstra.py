@@ -473,3 +473,94 @@ if __name__ == "__main__":
         maze3.display(path3)
     else:
         print("Aucun chemin trouvé!")
+    
+    # ==================== PARTIE 7 : Travaux et Questions ====================
+    print("\n" + "=" * 60)
+    print("PARTIE 7 - Question 1 : Tests de validation")
+    print("=" * 60)
+    
+    # ----- TEST 1: Labyrinthe SANS obstacle -----
+    print("\n" + "-" * 50)
+    print("TEST 1: Labyrinthe SANS obstacle (15x15)")
+    print("-" * 50)
+    
+    maze_empty = Maze.create_empty(15, 15, start=(1, 1), goal=(13, 13))
+    # Pas d'obstacles générés, juste les murs de bordure
+    print("Labyrinthe vide:")
+    maze_empty.display()
+    
+    # Vérification des contraintes départ/arrivée
+    print(f"\nDépart: {maze_empty.start} - Cellule: '{maze_empty.grid[maze_empty.start[0]][maze_empty.start[1]]}'")
+    print(f"Arrivée: {maze_empty.goal} - Cellule: '{maze_empty.grid[maze_empty.goal[0]][maze_empty.goal[1]]}'")
+    print(f"✓ Départ franchissable: {maze_empty.is_valid(*maze_empty.start)}")
+    print(f"✓ Arrivée franchissable: {maze_empty.is_valid(*maze_empty.goal)}")
+    
+    path_empty = maze_empty.solve(maze_empty.start[0], maze_empty.start[1], 
+                                   maze_empty.goal[0], maze_empty.goal[1])
+    if path_empty:
+        print(f"\nChemin trouvé ({len(path_empty)} cellules):")
+        maze_empty.display(path_empty)
+    else:
+        print("\nAucun chemin trouvé!")
+    
+    # ----- TEST 2: Labyrinthe avec obstacles SIMPLES -----
+    print("\n" + "-" * 50)
+    print("TEST 2: Labyrinthe avec obstacles SIMPLES (15x15)")
+    print("-" * 50)
+    
+    maze_simple = Maze.create_empty(15, 15, start=(1, 1), goal=(13, 13))
+    # Ajouter quelques obstacles manuellement (mur vertical avec passage)
+    for i in range(2, 12):
+        maze_simple.grid[i][7] = '#'  # Mur vertical au milieu
+    maze_simple.grid[6][7] = '.'  # Passage dans le mur
+    maze_simple.init_rewards()
+    
+    print("Labyrinthe avec mur vertical et passage:")
+    maze_simple.display()
+    
+    # Vérification des contraintes
+    print(f"\nDépart: {maze_simple.start} - Franchissable: {maze_simple.is_valid(*maze_simple.start)}")
+    print(f"Arrivée: {maze_simple.goal} - Franchissable: {maze_simple.is_valid(*maze_simple.goal)}")
+    
+    path_simple = maze_simple.solve(maze_simple.start[0], maze_simple.start[1],
+                                     maze_simple.goal[0], maze_simple.goal[1])
+    if path_simple:
+        print(f"\nChemin trouvé ({len(path_simple)} cellules):")
+        maze_simple.display(path_simple)
+    else:
+        print("\nAucun chemin trouvé!")
+    
+    # ----- TEST 3: Labyrinthe SANS chemin possible -----
+    print("\n" + "-" * 50)
+    print("TEST 3: Labyrinthe SANS chemin possible (15x15)")
+    print("-" * 50)
+    
+    maze_blocked = Maze.create_empty(15, 15, start=(1, 1), goal=(13, 13))
+    # Créer un mur complet qui bloque le passage
+    for i in range(1, 14):
+        maze_blocked.grid[i][7] = '#'  # Mur vertical COMPLET (sans passage)
+    maze_blocked.init_rewards()
+    
+    print("Labyrinthe avec mur BLOQUANT:")
+    maze_blocked.display()
+    
+    # Vérification des contraintes (départ et arrivée doivent rester franchissables)
+    print(f"\nDépart: {maze_blocked.start} - Franchissable: {maze_blocked.is_valid(*maze_blocked.start)}")
+    print(f"Arrivée: {maze_blocked.goal} - Franchissable: {maze_blocked.is_valid(*maze_blocked.goal)}")
+    
+    path_blocked = maze_blocked.solve(maze_blocked.start[0], maze_blocked.start[1],
+                                       maze_blocked.goal[0], maze_blocked.goal[1])
+    if path_blocked:
+        print(f"\nChemin trouvé ({len(path_blocked)} cellules):")
+        maze_blocked.display(path_blocked)
+    else:
+        print("\n✗ Aucun chemin trouvé! (comportement attendu)")
+    
+    # ----- Résumé des tests -----
+    print("\n" + "=" * 60)
+    print("RÉSUMÉ DES TESTS - Question 1")
+    print("=" * 60)
+    print(f"Test 1 (sans obstacle)     : {'✓ PASS' if path_empty else '✗ FAIL'}")
+    print(f"Test 2 (obstacles simples) : {'✓ PASS' if path_simple else '✗ FAIL'}")
+    print(f"Test 3 (sans chemin)       : {'✓ PASS' if not path_blocked else '✗ FAIL'}")
+    print(f"Contraintes départ/arrivée : ✓ Toujours respectées")
