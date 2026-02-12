@@ -253,14 +253,108 @@ class Maze:
     
     # ==================== FIN PARTIE B ====================
     
-    # ==================== PARTIE C : Algorithme Dijkstra (à implémenter plus tard) ====================
-    # def solve(self, si, sj, gi, gj):
-    #     """À implémenter dans la Partie C"""
-    #     pass
+    # ==================== PARTIE C : Algorithme A* ====================
     
-    # def _reconstruct_path(self, parent, goal):
-    #     """À implémenter dans la Partie C"""
-    #     pass
+    def _heuristic(self, i, j, gi, gj):
+        """
+        Calcule l'heuristique (distance de Manhattan) entre (i,j) et (gi,gj).
+        Cette heuristique est admissible car elle ne surestime jamais le coût réel.
+        """
+        return abs(i - gi) + abs(j - gj)
+    
+    def solve(self, si, sj, gi, gj):
+        """
+        Trouve le chemin optimal de (si, sj) à (gi, gj) avec l'algorithme A*.
+        
+        Paramètres:
+        - si, sj: position de départ (ligne, colonne)
+        - gi, gj: position d'arrivée (ligne, colonne)
+        
+        Retourne:
+        - La liste ordonnée des cellules du chemin optimal [(i1,j1), (i2,j2), ...]
+        - None si aucun chemin n'existe
+        
+        L'algorithme utilise:
+        - Une file de priorité pour gérer les cellules à explorer
+        - f(n) = g(n) + h(n) avec g = coût réel, h = heuristique (Manhattan)
+        - Mémorisation des meilleurs coûts trouvés
+        - Reconstruction du chemin via les relations de parenté
+        """
+        # g_score[cellule] = coût réel du chemin depuis le départ
+        g_score = {}
+        g_score[(si, sj)] = 0
+        
+        # f_score[cellule] = g_score + heuristique (estimation du coût total)
+        f_score = {}
+        f_score[(si, sj)] = self._heuristic(si, sj, gi, gj)
+        
+        # Pour reconstruire le chemin: parent[cellule] = cellule précédente
+        parent = {}
+        parent[(si, sj)] = None
+        
+        # File de priorité: (f_score, compteur, (i, j))
+        # Le compteur sert à départager les égalités de f_score
+        counter = 0
+        heap = [(f_score[(si, sj)], counter, (si, sj))]
+        
+        # Ensemble des cellules déjà évaluées (closed set)
+        visited = set()
+        
+        while heap:
+            # Extraire la cellule avec le plus petit f_score
+            current_f, _, (i, j) = heapq.heappop(heap)
+            
+            # Si déjà visitée, on passe
+            if (i, j) in visited:
+                continue
+            
+            # Marquer comme visitée
+            visited.add((i, j))
+            
+            # Si on a atteint l'arrivée, reconstruire et retourner le chemin
+            if (i, j) == (gi, gj):
+                return self._reconstruct_path(parent, (gi, gj))
+            
+            # Explorer les voisins accessibles
+            for (ni, nj) in self.get_neighbors(i, j):
+                if (ni, nj) in visited:
+                    continue
+                
+                # Coût pour atteindre le voisin = coût actuel + 1
+                tentative_g = g_score[(i, j)] + 1
+                
+                # Si on trouve un meilleur chemin vers ce voisin
+                if (ni, nj) not in g_score or tentative_g < g_score[(ni, nj)]:
+                    # Mettre à jour le meilleur coût
+                    g_score[(ni, nj)] = tentative_g
+                    f_score[(ni, nj)] = tentative_g + self._heuristic(ni, nj, gi, gj)
+                    parent[(ni, nj)] = (i, j)
+                    
+                    # Ajouter à la file de priorité
+                    counter += 1
+                    heapq.heappush(heap, (f_score[(ni, nj)], counter, (ni, nj)))
+        
+        # Aucun chemin trouvé
+        return None
+    
+    def _reconstruct_path(self, parent, goal):
+        """
+        Reconstruit le chemin optimal en remontant les relations de parenté.
+        
+        Paramètres:
+        - parent: dictionnaire {cellule: cellule_précédente}
+        - goal: cellule d'arrivée
+        
+        Retourne: liste ordonnée des cellules du départ à l'arrivée
+        """
+        path = []
+        current = goal
+        while current is not None:
+            path.append(current)
+            current = parent[current]
+        path.reverse()  # Inverser pour avoir départ -> arrivée
+        return path
+    
     # ==================== FIN PARTIE C ====================
     
     def display(self, path=None):
@@ -321,8 +415,6 @@ if __name__ == "__main__":
     print(f"\nDépart: {maze.start}, Arrivée: {maze.goal}")
     print(f"Dimensions: {maze.height} x {maze.width}")
     
-    # L'algorithme de résolution sera implémenté dans la Partie C
-    
     print("\n" + "=" * 50)
     print("TEST PARTIE B : Génération de labyrinthe")
     print("=" * 50)
@@ -347,3 +439,37 @@ if __name__ == "__main__":
         row = [f"{maze3.rewards[i][j]:>5}" if maze3.rewards[i][j] != float('-inf') else " -inf" 
                for j in range(5)]
         print(" ".join(row))
+    
+    print("\n" + "=" * 50)
+    print("TEST PARTIE C : Algorithme A*")
+    print("=" * 50)
+    
+    # Résoudre le labyrinthe chargé depuis fichier
+    print("\n--- Résolution du labyrinthe (fichier) avec A* ---")
+    path = maze.solve(maze.start[0], maze.start[1], maze.goal[0], maze.goal[1])
+    
+    if path:
+        print(f"Chemin trouvé ({len(path)} cellules):")
+        maze.display(path)
+    else:
+        print("Aucun chemin trouvé!")
+    
+    # Résoudre le labyrinthe généré aléatoirement
+    print("\n--- Résolution du labyrinthe aléatoire avec A* ---")
+    path2 = maze2.solve(maze2.start[0], maze2.start[1], maze2.goal[0], maze2.goal[1])
+    
+    if path2:
+        print(f"Chemin trouvé ({len(path2)} cellules):")
+        maze2.display(path2)
+    else:
+        print("Aucun chemin trouvé!")
+    
+    # Résoudre le labyrinthe déterministe
+    print("\n--- Résolution du labyrinthe déterministe avec A* ---")
+    path3 = maze3.solve(maze3.start[0], maze3.start[1], maze3.goal[0], maze3.goal[1])
+    
+    if path3:
+        print(f"Chemin trouvé ({len(path3)} cellules):")
+        maze3.display(path3)
+    else:
+        print("Aucun chemin trouvé!")
