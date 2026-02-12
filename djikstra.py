@@ -401,6 +401,276 @@ class Maze:
         path.reverse()  # Inverser pour avoir départ -> arrivée
         return path
     
+    # ==================== QUESTION 3 : Dijkstra et comparaison ====================
+    
+    def solve_dijkstra(self, si, sj, gi, gj, allow_diagonal=False):
+        """
+        Trouve le chemin optimal avec l'algorithme de Dijkstra.
+        
+        Dijkstra explore les cellules par ordre de coût croissant depuis le départ,
+        SANS utiliser d'heuristique (contrairement à A*).
+        
+        Paramètres:
+        - si, sj: position de départ
+        - gi, gj: position d'arrivée
+        - allow_diagonal: autoriser les déplacements diagonaux
+        
+        Retourne:
+        - (path, nodes_explored): le chemin et le nombre de nœuds explorés
+        - (None, nodes_explored) si aucun chemin n'existe
+        """
+        # Distance minimale pour atteindre chaque cellule
+        dist = {}
+        dist[(si, sj)] = 0
+        
+        # Pour reconstruire le chemin
+        parent = {}
+        parent[(si, sj)] = None
+        
+        # File de priorité: (distance, compteur, (i, j))
+        counter = 0
+        heap = [(0, counter, (si, sj))]
+        
+        # Cellules visitées
+        visited = set()
+        nodes_explored = 0
+        
+        while heap:
+            current_dist, _, (i, j) = heapq.heappop(heap)
+            
+            if (i, j) in visited:
+                continue
+            
+            visited.add((i, j))
+            nodes_explored += 1
+            
+            # Arrivée atteinte
+            if (i, j) == (gi, gj):
+                return self._reconstruct_path(parent, (gi, gj)), nodes_explored
+            
+            # Explorer les voisins
+            for (ni, nj), move_cost in self.get_neighbors(i, j, allow_diagonal):
+                if (ni, nj) in visited:
+                    continue
+                
+                new_dist = current_dist + move_cost
+                
+                if (ni, nj) not in dist or new_dist < dist[(ni, nj)]:
+                    dist[(ni, nj)] = new_dist
+                    parent[(ni, nj)] = (i, j)
+                    counter += 1
+                    heapq.heappush(heap, (new_dist, counter, (ni, nj)))
+        
+        return None, nodes_explored
+    
+    def solve_astar(self, si, sj, gi, gj, allow_diagonal=False):
+        """
+        Trouve le chemin optimal avec l'algorithme A*.
+        
+        A* utilise une heuristique pour guider la recherche vers l'arrivée,
+        ce qui réduit généralement le nombre de nœuds explorés.
+        
+        Paramètres:
+        - si, sj: position de départ
+        - gi, gj: position d'arrivée
+        - allow_diagonal: autoriser les déplacements diagonaux
+        
+        Retourne:
+        - (path, nodes_explored): le chemin et le nombre de nœuds explorés
+        - (None, nodes_explored) si aucun chemin n'existe
+        """
+        g_score = {}
+        g_score[(si, sj)] = 0
+        
+        f_score = {}
+        f_score[(si, sj)] = self._heuristic(si, sj, gi, gj, allow_diagonal)
+        
+        parent = {}
+        parent[(si, sj)] = None
+        
+        counter = 0
+        heap = [(f_score[(si, sj)], counter, (si, sj))]
+        
+        visited = set()
+        nodes_explored = 0
+        
+        while heap:
+            current_f, _, (i, j) = heapq.heappop(heap)
+            
+            if (i, j) in visited:
+                continue
+            
+            visited.add((i, j))
+            nodes_explored += 1
+            
+            if (i, j) == (gi, gj):
+                return self._reconstruct_path(parent, (gi, gj)), nodes_explored
+            
+            for (ni, nj), move_cost in self.get_neighbors(i, j, allow_diagonal):
+                if (ni, nj) in visited:
+                    continue
+                
+                tentative_g = g_score[(i, j)] + move_cost
+                
+                if (ni, nj) not in g_score or tentative_g < g_score[(ni, nj)]:
+                    g_score[(ni, nj)] = tentative_g
+                    f_score[(ni, nj)] = tentative_g + self._heuristic(ni, nj, gi, gj, allow_diagonal)
+                    parent[(ni, nj)] = (i, j)
+                    counter += 1
+                    heapq.heappush(heap, (f_score[(ni, nj)], counter, (ni, nj)))
+        
+        return None, nodes_explored
+    
+    def compare_algorithms(self, allow_diagonal=False, verbose=True):
+        """
+        Compare Dijkstra et A* sur ce labyrinthe.
+        
+        Retourne un dictionnaire avec les métriques de comparaison.
+        """
+        import time
+        
+        si, sj = self.start
+        gi, gj = self.goal
+        
+        # --- Dijkstra ---
+        start_time = time.perf_counter()
+        path_dijkstra, nodes_dijkstra = self.solve_dijkstra(si, sj, gi, gj, allow_diagonal)
+        time_dijkstra = (time.perf_counter() - start_time) * 1000  # ms
+        
+        # --- A* ---
+        start_time = time.perf_counter()
+        path_astar, nodes_astar = self.solve_astar(si, sj, gi, gj, allow_diagonal)
+        time_astar = (time.perf_counter() - start_time) * 1000  # ms
+        
+        results = {
+            'dijkstra': {
+                'path_length': len(path_dijkstra) if path_dijkstra else 0,
+                'nodes_explored': nodes_dijkstra,
+                'time_ms': time_dijkstra,
+                'path': path_dijkstra
+            },
+            'astar': {
+                'path_length': len(path_astar) if path_astar else 0,
+                'nodes_explored': nodes_astar,
+                'time_ms': time_astar,
+                'path': path_astar
+            }
+        }
+        
+        if verbose:
+            print("\n" + "=" * 60)
+            print("COMPARAISON DIJKSTRA vs A*")
+            print("=" * 60)
+            print(f"Labyrinthe: {self.height}x{self.width}")
+            print(f"Diagonales: {'Oui' if allow_diagonal else 'Non'}")
+            print("-" * 60)
+            print(f"{'Métrique':<25} {'Dijkstra':>15} {'A*':>15}")
+            print("-" * 60)
+            print(f"{'Longueur du chemin':<25} {results['dijkstra']['path_length']:>15} {results['astar']['path_length']:>15}")
+            print(f"{'Nœuds explorés':<25} {results['dijkstra']['nodes_explored']:>15} {results['astar']['nodes_explored']:>15}")
+            print(f"{'Temps (ms)':<25} {results['dijkstra']['time_ms']:>15.3f} {results['astar']['time_ms']:>15.3f}")
+            print("-" * 60)
+            
+            # Calcul des gains
+            if nodes_dijkstra > 0:
+                gain_nodes = ((nodes_dijkstra - nodes_astar) / nodes_dijkstra) * 100
+                print(f"{'Gain A* (nœuds)':<25} {gain_nodes:>15.1f}%")
+            if time_dijkstra > 0:
+                gain_time = ((time_dijkstra - time_astar) / time_dijkstra) * 100
+                print(f"{'Gain A* (temps)':<25} {gain_time:>15.1f}%")
+            print("=" * 60)
+            
+            # Analyse
+            print("\nANALYSE:")
+            print("-" * 40)
+            if path_dijkstra and path_astar:
+                if len(path_dijkstra) == len(path_astar):
+                    print("✓ Les deux algorithmes trouvent un chemin de même longueur")
+                    print("  (les deux sont optimaux)")
+                else:
+                    print("⚠ Longueurs différentes (vérifier l'implémentation)")
+                
+                if nodes_astar < nodes_dijkstra:
+                    print(f"✓ A* explore {nodes_dijkstra - nodes_astar} nœuds de moins ({gain_nodes:.1f}% de gain)")
+                    print("  grâce à l'heuristique qui guide vers l'arrivée")
+                elif nodes_astar == nodes_dijkstra:
+                    print("→ A* et Dijkstra explorent le même nombre de nœuds")
+                    print("  (peut arriver si l'heuristique n'aide pas)")
+                else:
+                    print("⚠ A* explore plus de nœuds (cas rare)")
+            elif not path_dijkstra and not path_astar:
+                print("✗ Aucun chemin trouvé par les deux algorithmes")
+            else:
+                print("⚠ Un algorithme trouve un chemin, l'autre non (erreur)")
+        
+        return results
+    
+    def compare_graphical(self, allow_diagonal=False):
+        """
+        Affiche une comparaison graphique entre Dijkstra et A*.
+        """
+        if not MATPLOTLIB_AVAILABLE:
+            print("Erreur: matplotlib n'est pas installé.")
+            return
+        
+        si, sj = self.start
+        gi, gj = self.goal
+        
+        path_dijkstra, nodes_dijkstra = self.solve_dijkstra(si, sj, gi, gj, allow_diagonal)
+        path_astar, nodes_astar = self.solve_astar(si, sj, gi, gj, allow_diagonal)
+        
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+        
+        for ax, path, title, nodes in [
+            (ax1, path_dijkstra, f"DIJKSTRA\n({nodes_dijkstra} nœuds explorés)", nodes_dijkstra),
+            (ax2, path_astar, f"A*\n({nodes_astar} nœuds explorés)", nodes_astar)
+        ]:
+            matrix = np.zeros((self.height, self.width))
+            
+            for i in range(self.height):
+                for j in range(len(self.grid[i])):
+                    cell = self.grid[i][j]
+                    if cell == '#':
+                        matrix[i][j] = 1
+                    elif cell == 'A':
+                        matrix[i][j] = 3
+                    elif cell == 'B':
+                        matrix[i][j] = 4
+            
+            if path:
+                for (i, j) in path:
+                    if matrix[i][j] == 0:
+                        matrix[i][j] = 2
+            
+            colors = ['white', 'black', 'limegreen', 'dodgerblue', 'red']
+            cmap = ListedColormap(colors)
+            
+            ax.imshow(matrix, cmap=cmap, vmin=0, vmax=4)
+            ax.set_xticks(np.arange(-0.5, self.width, 1), minor=True)
+            ax.set_yticks(np.arange(-0.5, self.height, 1), minor=True)
+            ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5)
+            
+            if self.start:
+                ax.text(self.start[1], self.start[0], 'A', ha='center', va='center',
+                       fontsize=12, fontweight='bold', color='white')
+            if self.goal:
+                ax.text(self.goal[1], self.goal[0], 'B', ha='center', va='center',
+                       fontsize=12, fontweight='bold', color='white')
+            
+            if path and len(path) > 1:
+                path_y = [p[0] for p in path]
+                path_x = [p[1] for p in path]
+                ax.plot(path_x, path_y, 'g-', linewidth=2, alpha=0.7)
+            
+            length_info = f"Chemin: {len(path)} cellules" if path else "Pas de chemin"
+            ax.set_title(f"{title}\n{length_info}", fontsize=12, fontweight='bold')
+        
+        fig.suptitle("Comparaison DIJKSTRA vs A*", fontsize=14, fontweight='bold')
+        plt.tight_layout()
+        plt.show()
+    
+    # ==================== FIN QUESTION 3 ====================
+    
     # ==================== FIN PARTIE C ====================
     
     def display(self, path=None):
@@ -828,3 +1098,82 @@ if __name__ == "__main__":
     else:
         print("⚠ matplotlib non disponible. Pour activer la visualisation graphique:")
         print("  pip install matplotlib numpy")
+    
+    # ==================== QUESTION 3 : Comparaison Dijkstra vs A* ====================
+    print("\n" + "=" * 60)
+    print("PARTIE 7 - Question 3 : Comparaison Dijkstra vs A*")
+    print("=" * 60)
+    
+    # ----- Test sur petit labyrinthe -----
+    print("\n" + "-" * 50)
+    print("TEST 1: Petit labyrinthe (15x15)")
+    print("-" * 50)
+    
+    maze_small = Maze.create_empty(15, 15, start=(1, 1), goal=(13, 13))
+    maze_small.generate_obstacles_random(density=0.15, seed=42)
+    maze_small.display()
+    maze_small.compare_algorithms(allow_diagonal=False)
+    
+    # ----- Test sur labyrinthe moyen -----
+    print("\n" + "-" * 50)
+    print("TEST 2: Labyrinthe moyen (30x30)")
+    print("-" * 50)
+    
+    maze_medium = Maze.create_empty(30, 30, start=(1, 1), goal=(28, 28))
+    maze_medium.generate_obstacles_random(density=0.2, seed=123)
+    maze_medium.compare_algorithms(allow_diagonal=False)
+    
+    # ----- Test sur grand labyrinthe -----
+    print("\n" + "-" * 50)
+    print("TEST 3: Grand labyrinthe (50x50)")
+    print("-" * 50)
+    
+    maze_large = Maze.create_empty(50, 50, start=(1, 1), goal=(48, 48))
+    maze_large.generate_obstacles_random(density=0.25, seed=456)
+    maze_large.compare_algorithms(allow_diagonal=False)
+    
+    # ----- Test avec diagonales -----
+    print("\n" + "-" * 50)
+    print("TEST 4: Comparaison avec déplacements diagonaux (30x30)")
+    print("-" * 50)
+    
+    maze_medium.compare_algorithms(allow_diagonal=True)
+    
+    # ----- Visualisation graphique de la comparaison -----
+    if MATPLOTLIB_AVAILABLE:
+        print("\n" + "-" * 50)
+        print("Visualisation graphique Dijkstra vs A*")
+        print("-" * 50)
+        maze_small.compare_graphical(allow_diagonal=False)
+    
+    # ----- Résumé théorique -----
+    print("\n" + "=" * 60)
+    print("RÉSUMÉ THÉORIQUE : Dijkstra vs A*")
+    print("=" * 60)
+    print("""
+┌─────────────────────────────────────────────────────────────┐
+│                    DIJKSTRA vs A*                           │
+├─────────────────────────────────────────────────────────────┤
+│ DIJKSTRA:                                                   │
+│  - Explore toutes les directions uniformément               │
+│  - Garantit le chemin optimal                               │
+│  - Pas d'heuristique (exploration "aveugle")                │
+│  - Complexité: O((V + E) log V)                             │
+│                                                             │
+│ A*:                                                         │
+│  - Utilise une heuristique pour guider la recherche         │
+│  - Garantit le chemin optimal (si heuristique admissible)   │
+│  - Explore prioritairement vers l'arrivée                   │
+│  - Généralement plus rapide que Dijkstra                    │
+│  - Complexité: O((V + E) log V) mais moins de nœuds         │
+│                                                             │
+│ HEURISTIQUES UTILISÉES:                                     │
+│  - 4 directions: Manhattan (|dx| + |dy|)                    │
+│  - 8 directions: Diagonale (√2 * min + |diff|)              │
+│                                                             │
+│ CONCLUSION:                                                 │
+│  A* est généralement plus efficace car l'heuristique        │
+│  réduit l'espace de recherche. Les deux garantissent        │
+│  un chemin optimal, mais A* y arrive plus vite.             │
+└─────────────────────────────────────────────────────────────┘
+""")
